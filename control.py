@@ -102,12 +102,14 @@ def add_control_mesh(xform, joint):
     to_remove = []
     for skin in get_skins(joint):
         for geo in get_geos(skin):
-            mesh = create_shape(geo, xform) # Add instance of geo to xform
-            inf_index = list(get_influence(skin)).index(joint)
-            for vert, weights in get_weights(skin):
-                for index in trim_weights(weights):
-                    if inf_index != index:
-                        to_remove.append("%s.vtx[%s]" % (mesh, vert))
+            influences = list(get_influence(skin))
+            if joint in influences:
+                mesh = create_shape(geo, xform) # Add instance of geo to xform
+                inf_index = influences.index(joint)
+                for vert, weights in get_weights(skin):
+                    for index in trim_weights(weights):
+                        if inf_index != index:
+                            to_remove.append("%s.vtx[%s]" % (mesh, vert))
     if to_remove:
         faces = convert_to_faces(to_remove)
         cmds.delete(faces)
@@ -163,12 +165,12 @@ def main():
         if err:
             cmds.undo()
 
-
-if __name__ == '__main__':
+def prep_test():
     cmds.file(new=True, force=True) # New blank scene for testing
     sphere = cmds.polySphere()[0] # Test Sphere
     jnt1, jnt2 = ((cmds.select(cl=True), cmds.joint(p=a))[1] for a in ((0,-1,0), (0,1,0))) # Add Joints
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
-
     cmds.select(jnt1, jnt2, r=True)
+
+if __name__ == '__main__':
     main()
