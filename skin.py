@@ -18,37 +18,43 @@ def get_influence(skin):
     for joint in cmds.skinCluster(skin, q=True, inf=True) or []:
         yield joint
 
-weightCache = collections.defaultdict(list)
+weightCache = collections.defaultdict(lambda: weightCache)
 def get_weights(skin):
     """ Yields (vert ID, weights) """
     # Cache operation for multiple calls
     if skin not in weightCache:
-        for vert in cmds.getAttr("%s.weightList" % skin, mi=True) or []:
-            weightCache[skin].append(cmds.getAttr("%s.weightList[%s].weights" % (skin, vert))[0])
-    for vert, weights in enumerate(weightCache[skin]):
+        skin_attr = "%s.weightList" % skin
+        for vert in cmds.getAttr(skin_attr, mi=True) or []:
+            vert_attr = "%s[%s].weights" % (skin_attr, vert)
+            weights = dict((a, cmds.getAttr("%s[%s]" % (vert_attr, a))) for a in cmds.getAttr(vert_attr, mi=True) or [])
+            weightCache[skin][vert] = weights
+    for vert, weights in weightCache[skin].iteritems():
         yield vert, weights
 
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
-    num = len([a for a in weights if a > 0.0001]) # Trim out zero weights
-    if num:
-        if num == 1: # Only one influence. Only one option...
-            yield 0
-        else: # Get influence with highest equal weighting
-            cutoff = 1.0 / num
-            for i, wgt in enumerate(weights):
-                if cutoff <= wgt:
-                    yield i
+    highest = max(weights.values())
+    for i, weight in weights.iteritems():
+        if weight == highest: # Tie breaker, keep both!
+            yield i
+
+def select_weighted(influence):
+    """ Select vertices driven with the majority by influence """
+    cmds.select(cl=True) # Start fresh!
+    for skin in get_skins(influence):
+        for geo in get_geos(skin):
+            inf_index = list(get_influence(skin)).index(influence)
+            for vert, weights in get_weights(skin):
+                for index in trim_weights(weights):
+                    if inf_index == index: # Our joint matches the highest influence
+                        cmds.select("%s.vtx[%s]" % (geo, vert), add=True)
+
 
 if __name__ == '__main__':
     cmds.file(new=True, force=True) # New blank scene for testing
     sphere = cmds.polySphere()[0] # Test Sphere
-    sphere1 = cmds.polyCube()[0] # Test Sphere
     jnt1, jnt2 = ((cmds.select(cl=True), cmds.joint(p=a))[1] for a in ((0,-1,0), (0,1,0))) # Add Joints
-    skin = cmds.skinCluster(sphere, sphere1, jnt1, jnt2)[0] # Add skin to sphere
+    skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
 
-    # All joints
-    # print cmds.skinCluster(skin, q=True, inf=True)
-
-    for vert, wgt in get_weights(skin):
-        print vert, wgt, list(trim_weights(wgt))
+    select_weighted(jnt2)
+    print cmds.skinPercent(skin, sphere + ".vtx[381]", q=True, v=True)
