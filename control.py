@@ -36,7 +36,7 @@ def get_geos(skin):
             yield geo
 
 infCache = collections.defaultdict(list)
-def get_influence(skin):
+def get_influences(skin):
     """ Yields joints """
     if skin in infCache:
         for inf in infCache[skin]:
@@ -58,6 +58,19 @@ def get_weights(skin):
             weightCache[skin][vert] = weights
     for vert, weights in weightCache[skin].iteritems():
         yield vert, weights
+
+def get_influence_exclusion(joint):
+    """ Get verts excluded from influence """
+    exclusion = collections.defaultdict(list)
+    for skin in get_skins(joint):
+        for geo in get_geos(skin):
+            influences = list(get_influences(skin))
+            if joint in influences:
+                inf_index = influences.index(joint)
+                for vert, weights in get_weights(skin):
+                    for index in trim_weights(weights):
+                        if inf_index != index:
+                            exclusion[geo].append(vert)
 
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
@@ -102,7 +115,7 @@ def add_control_mesh(xform, joint):
     to_remove = []
     for skin in get_skins(joint):
         for geo in get_geos(skin):
-            influences = list(get_influence(skin))
+            influences = list(get_influences(skin))
             if joint in influences:
                 mesh = create_shape(geo, xform) # Add instance of geo to xform
                 inf_index = influences.index(joint)
