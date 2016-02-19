@@ -173,4 +173,5 @@ def prep_test():
     cmds.select(jnt1, jnt2, r=True)
 
 if __name__ == '__main__':
+    # prep_test()
     main()
