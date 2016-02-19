@@ -6,18 +6,12 @@ import maya.cmds as cmds
 tree = lambda: collections.defaultdict(tree)
 
 def warning(text):
+    """ Pop up a message """
     cmds.confirmDialog(t="Oh no!", m=text)
 
 def ask(question):
+    """ Ask user a question """
     return "Yes" == cmds.confirmDialog(t="Quick Question...", m=question, button=["Yes","No"], defaultButton="Yes", cancelButton="No", dismissString="No" )
-
-def create_control(geo, target, force=False):
-    name = "ctrl_%s" % target
-    if cmds.objExists(name) and not force:
-        return cmds.warning("Control exists. Use Force to delete.")
-    xform = cmds.group(empty=True, n="ctrl_%s" % target)
-    cmds.xform(xform, ws=True, m=cmds.xform(target, q=True, ws=True, m=True))
-    return xform, create_shape(geo, xform)
 
 skinCache = collections.defaultdict(list)
 def get_skins(joint):
@@ -87,14 +81,14 @@ def create_shape(geo, xform):
     cmds.connectAttr("%s.outputGeometry" % xform_compensate, "%s.inMesh" % mesh)
 
     # Turn off rendering
-    cmds.setAttr("%s.castsShadows", 0)
-    cmds.setAttr("%s.receiveShadows", 0)
-    cmds.setAttr("%s.motionBlur", 0)
-    cmds.setAttr("%s.primaryVisibility", 0)
-    cmds.setAttr("%s.smoothShading", 0)
-    cmds.setAttr("%s.visibleInReflections", 0)
-    cmds.setAttr("%s.visibleInRefractions", 0)
-    cmds.setAttr("%s.doubleSided", 0)
+    cmds.setAttr("%s.castsShadows" % mesh, 0)
+    cmds.setAttr("%s.receiveShadows" % mesh, 0)
+    cmds.setAttr("%s.motionBlur" % mesh, 0)
+    cmds.setAttr("%s.primaryVisibility" % mesh, 0)
+    cmds.setAttr("%s.smoothShading" % mesh, 0)
+    cmds.setAttr("%s.visibleInReflections" % mesh, 0)
+    cmds.setAttr("%s.visibleInRefractions" % mesh, 0)
+    cmds.setAttr("%s.doubleSided" % mesh, 0)
     return mesh
 
 def create_base(target, name):
@@ -109,7 +103,7 @@ def add_control_mesh(xform, joint):
     for skin in get_skins(joint):
         for geo in get_geos(skin):
             mesh = create_shape(geo, xform) # Add instance of geo to xform
-            inf_index = list(get_influence(skin)).index(influence)
+            inf_index = list(get_influence(skin)).index(joint)
             for vert, weights in get_weights(skin):
                 for index in trim_weights(weights):
                     if inf_index != index:
@@ -117,6 +111,19 @@ def add_control_mesh(xform, joint):
     if to_remove:
         faces = convert_to_faces(to_remove)
         cmds.delete(faces)
+
+def create_invis_material():
+    name = "invsible_material"
+    if not cmds.objExists(name):
+        name = cmds.shadingNode("surfaceShader", asShader=True, n=name)
+        set_ = cmds.sets(r=True, nss=True, em=True, n="%sSG" % name)
+        cmds.connectAttr("%s.outColor" % name, "%s.surfaceShader" % set_)
+        cmds.setAttr("%s.outTransparency" % name, 1, 1, 1, type="double3")
+    return name
+
+def apply_material(obj, material):
+    for set_ in cmds.listConnections("%s.outColor" % material) or []:
+        cmds.sets(obj, e=True, fe=set_)
 
 def main():
     joints = cmds.ls(sl=True, type="joint")
@@ -139,13 +146,16 @@ def main():
                 cmds.delete(shapes)
                 # Add new control mesh
                 add_control_mesh(control, jnt)
-        for control, jnt in todo:
-            control = create_base(jnt, control) # Create a new control
-            add_control_mesh(control, jnt)
-
-        if todo and ask("Do you wish to parent the joints to their respective controls?"):
+        if todo:
+            material = create_invis_material()
             for control, jnt in todo:
-                cmds.parent(jnt, control)
+                control = create_base(jnt, control) # Create a new control
+                add_control_mesh(control, jnt)
+                apply_material(control, material)
+
+            if ask("Do you wish to parent the joints to their respective controls?"):
+                for control, jnt in todo:
+                    cmds.parent(jnt, control)
     except Exception as err:
         raise
     finally:
@@ -160,10 +170,5 @@ if __name__ == '__main__':
     jnt1, jnt2 = ((cmds.select(cl=True), cmds.joint(p=a))[1] for a in ((0,-1,0), (0,1,0))) # Add Joints
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
 
-    cmds.group(em=True, n="ctrl_%s" % jnt2)
-    cmds.select(jnt2, r=True)
+    cmds.select(jnt1, jnt2, r=True)
     main()
-
-    # xform, mesh = create_control(sphere, jnt2)
-    # create_control(sphere, jnt2)
-    # cmds.parent(jnt2, xform)
