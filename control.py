@@ -175,3 +175,15 @@ def prep_test():
 if __name__ == '__main__':
     # prep_test()
     main()
+
+    # TODO
+    #
+    # pick one Joint option
+    # walk the skeleton to the base
+    # build a replica skeleton of dummy ctrl nodes, skipping joints without a skin
+    # attach control shape to dummies
+    # constrain joint to control
+    #
+    # OR pick specific Joints
+    # validate joint has a skin
+    # attach control shape to dummy
