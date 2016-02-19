@@ -1,7 +1,10 @@
 # Skin and joint related functionality
 
 import maya.cmds as cmds
+import maya.mel as mel
 import collections
+
+tree = lambda: collections.defaultdict(tree)
 
 def get_skins(joint):
     """ Yields skin names """
@@ -18,7 +21,7 @@ def get_influence(skin):
     for joint in cmds.skinCluster(skin, q=True, inf=True) or []:
         yield joint
 
-weightCache = collections.defaultdict(lambda: weightCache)
+weightCache = tree()
 def get_weights(skin):
     """ Yields (vert ID, weights) """
     # Cache operation for multiple calls
@@ -38,16 +41,19 @@ def trim_weights(weights):
         if weight == highest: # Tie breaker, keep both!
             yield i
 
-def select_weighted(influence):
-    """ Select vertices driven with the majority by influence """
-    cmds.select(cl=True) # Start fresh!
+def selection_influence(skin, influence):
+    """ Build a selection of verices that hold the majority of influence """
     for skin in get_skins(influence):
         for geo in get_geos(skin):
             inf_index = list(get_influence(skin)).index(influence)
             for vert, weights in get_weights(skin):
                 for index in trim_weights(weights):
-                    if inf_index == index: # Our joint matches the highest influence
-                        cmds.select("%s.vtx[%s]" % (geo, vert), add=True)
+                    vert_name = "%s.vtx[%s]" % (geo, vert)
+                    if inf_index == index:
+                        yield "%s.vtx[%s]" % (geo, vert)
+
+def convert_to_faces(selection):
+    return cmds.polyListComponentConversion(selection, tf=True, internal=True)
 
 
 if __name__ == '__main__':
@@ -56,5 +62,5 @@ if __name__ == '__main__':
     jnt1, jnt2 = ((cmds.select(cl=True), cmds.joint(p=a))[1] for a in ((0,-1,0), (0,1,0))) # Add Joints
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
 
-    select_weighted(jnt2)
-    print cmds.skinPercent(skin, sphere + ".vtx[381]", q=True, v=True)
+    sel = convert_to_faces(list(selection_influence(skin, jnt2)))
+    cmds.select(sel, r=True)
