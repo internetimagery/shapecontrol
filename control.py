@@ -15,11 +15,18 @@ def ask(question):
     """ Ask user a question """
     return "Yes" == cmds.confirmDialog(t="Quick Question...", m=question, button=["Yes","No"], defaultButton="Yes", cancelButton="No", dismissString="No" )
 
-def get_attr(node, attr):
+def get_attr(node, attr, create=False):
     """ Get attribute. Creating one if it doesn't exist """
-    if not cmds.attributeQuery(attr, n=node, ex=True):
+    if not cmds.attributeQuery(attr, n=node, ex=True) and create:
         cmds.addAttr(node, ln=attr, s=True)
     return node + "." + attr
+
+def connections(*args, **kwargs):
+    """ Grab connections """
+    try:
+        return cmds.listConnections(*args, **kwargs) or []
+    except ValueError:
+        return []
 
 skinCache = collections.defaultdict(list)
 def get_skins(joint):
@@ -28,7 +35,7 @@ def get_skins(joint):
         for skin in skinCache[joint]:
             yield skin
     else:
-        for skin in set(cmds.listConnections(joint, s=False, type="skinCluster") or []):
+        for skin in set(connections(joint, s=False, type="skinCluster")):
             skinCache[joint].append(skin)
             yield skin
 
@@ -126,19 +133,19 @@ def create_base(target, name):
 
 def set_connected_controller(influence, controller):
     """ Forge a link to a controller """
-    out_attr = get_attr(influence, INF_LINK)
-    in_attr = get_attr(controller, CTRL_LINK)
+    out_attr = get_attr(influence, INF_LINK, True)
+    in_attr = get_attr(controller, CTRL_LINK, True)
     cmds.connectAttr(out_attr, in_attr)
 
 def get_connected_controllers(influence):
     """ Get all linked controllers """
     attr = get_attr(influence, INF_LINK)
-    return cmds.listConnections(attr, d=False) or []
+    return connections(attr, s=False)
 
 def get_connected_influence(controller):
     """ Get all linked controllers """
     attr = get_attr(controller, CTRL_LINK)
-    return cmds.listConnections(attr, s=False) or []
+    return connections(attr, d=False)
 
 # def add_control_mesh(xform, joint):
 #     """ Add a control mesh to the xform. Based on the joint """
@@ -169,7 +176,7 @@ def create_invis_material():
 
 def apply_material(obj, material):
     """ Apply material to an object """
-    for set_ in cmds.listConnections("%s.outColor" % material) or []:
+    for set_ in connections("%s.outColor" % material):
         cmds.sets(obj, e=True, fe=set_)
 
 def get_selected_joints():
@@ -184,7 +191,7 @@ def update_controller(joint):
         cmds.delete(shapes) # Remove old shapes
         geos, include, exclude = get_influence_include_exclude(joint) # find out what affects joint
         for geo in geos: # Run through meshes
-            shape = create_shape(geo, base) # Add mesh
+            shape = create_shape(geo, controller) # Add mesh
             try:
                 verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
                 faces = convert_to_faces(verts)
@@ -253,9 +260,16 @@ def prep_test():
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
     cmds.select(jnt1, jnt2, r=True)
 
+    build_controller(jnt2)
+
 if __name__ == '__main__':
     # prep_test()
-    main()
+
+    jnt = cmds.ls(sl=True, type="joint")
+    update_controller(jnt[0])
+
+    # main()
+
 
     # TODO
     #
