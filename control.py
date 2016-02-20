@@ -4,8 +4,8 @@ import collections
 import maya.cmds as cmds
 
 TREE = lambda: collections.defaultdict(TREE)
-INF_LINK = "controllers"
-CTRL_LINK = "influence"
+INF_LINK = "ooc_controllers"
+CTRL_LINK = "ooc_influence"
 
 # Utility
 
@@ -274,55 +274,40 @@ You can use this as a time saver for a quick and dirty setup.
 
         cache = Cache() # Speed up some function calls
 
-        if control_type == 0:
-            print "normal"
-        if control_type == 1:
-            print "hierarchy"
-        if control_type == 2:
-            print "singular"
-        if control_type == 3:
-            for jnt in joints:
-                update_controller(jnt, cache)
-            print "Controllers Updated."
+        err = cmds.undoInfo(openChunk=True)
+        cmds.select(cl=True)
+        try:
+            if control_type == 0:
+                for jnt in joints:
+                    control = build_controller(jnt, cache)
+                    if control and constrain:
+                        cmds.parentConstraint(control, jnt)
+                print "Created controllers."
+            if control_type == 1:
+                print "hierarchy"
+            if control_type == 2:
+                print "TODO: Make this work!"
+                return
+                controllers = [build_controller(a, cache) for a in joints if a]
+                base_ctrl = controllers[0]
+                if 1 < len(controllers):
+                    for control in controllers[1:]: # Pull out all shapes from controls and mush into one
+                        for shape in cmds.listRelatives(control, c=True, s=True) or []:
+                            print shape
+                            cmds.parent(shape, base_ctrl, a=True, add=True, s=True)
+                        cmds.delete(control) # Remove empty husk!
+                cmds.parent(base_ctrl, container) # Keep organised!
+                print "Created control %s." % base_ctrl
+            if control_type == 3:
+                for jnt in joints:
+                    update_controller(jnt, cache)
+                print "Controllers Updated."
+        except Exception as err:
+            raise
+        finally:
+            cmds.undoInfo(closeChunk=True)
+            if err: cmds.undo()
 
-
-def main():
-    joints = cmds.ls(sl=True, type="joint")
-    if not joints: return warning("Please select some joints")
-    todo = []
-    exists = []
-    for jnt in joints:
-        name = "ctrl_%s" % jnt
-        if cmds.objExists(name):
-            exists.append((name, jnt))
-        else:
-            todo.append((name, jnt))
-
-    err = cmds.undoInfo(openChunk=True)
-    try:
-        if exists and ask("Some existing controls found. Do you wish to update them?"): # Replace existing controls
-            for control, jnt in exists:
-                # Clean out and refresh existing controls
-                shapes = cmds.listRelatives(control, c=True, s=True)
-                cmds.delete(shapes)
-                # Add new control mesh
-                add_control_mesh(control, jnt)
-        if todo:
-            material = create_invis_material()
-            for control, jnt in todo:
-                control = create_base(jnt, control) # Create a new control
-                add_control_mesh(control, jnt)
-                apply_material(control, material)
-
-            if ask("Do you wish to parent the joints to their respective controls?"):
-                for control, jnt in todo:
-                    cmds.parent(jnt, control)
-    except Exception as err:
-        raise
-    finally:
-        cmds.undoInfo(closeChunk=True)
-        if err:
-            cmds.undo()
 
 def prep_test():
     cmds.file(new=True, force=True) # New blank scene for testing
@@ -331,25 +316,8 @@ def prep_test():
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
     cmds.select(jnt1, jnt2, r=True)
 
-    build_controller(jnt2, Cache())
 
 if __name__ == '__main__':
     # prep_test()
 
-    # jnt = cmds.ls(sl=True, type="joint")
-    # update_controller(jnt[0], Cache())
     GUI()
-    # main()
-
-
-    # TODO
-    #
-    # pick one Joint option
-    # walk the skeleton to the base
-    # build a replica skeleton of dummy ctrl nodes, skipping joints without a skin
-    # attach control shape to dummies
-    # constrain joint to control
-    #
-    # OR pick specific Joints
-    # validate joint has a skin
-    # attach control shape to dummy
