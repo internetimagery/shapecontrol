@@ -3,7 +3,9 @@
 import collections
 import maya.cmds as cmds
 
-tree = lambda: collections.defaultdict(tree)
+TREE = lambda: collections.defaultdict(TREE)
+INF_LINK = "controllers"
+CTRL_LINK = "influence"
 
 def warning(text):
     """ Pop up a message """
@@ -12,6 +14,12 @@ def warning(text):
 def ask(question):
     """ Ask user a question """
     return "Yes" == cmds.confirmDialog(t="Quick Question...", m=question, button=["Yes","No"], defaultButton="Yes", cancelButton="No", dismissString="No" )
+
+def get_attr(node, attr):
+    """ Get attribute. Creating one if it doesn't exist """
+    if not cmds.attributeQuery(attr, n=node, ex=True):
+        cmds.addAttr(node, ln=attr, s=True)
+    return node + "." + attr
 
 skinCache = collections.defaultdict(list)
 def get_skins(joint):
@@ -46,7 +54,7 @@ def get_influences(skin):
             infCache[skin].append(inf)
             yield inf
 
-weightCache = tree()
+weightCache = TREE()
 def get_weights(skin):
     """ Yields (vert ID, weights) """
     # Cache operation for multiple calls
@@ -71,6 +79,7 @@ def get_influence_exclusion(joint):
                     for index in trim_weights(weights):
                         if inf_index != index:
                             exclusion[geo].append(vert)
+    return exclusion
 
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
@@ -110,6 +119,22 @@ def create_base(target, name):
     cmds.xform(name, ws=True, m=cmds.xform(target, q=True, ws=True, m=True))
     return name
 
+def set_connected_controller(influence, controller):
+    """ Forge a link to a controller """
+    out_attr = get_attr(influence, INF_LINK)
+    in_attr = get_attr(controller, CTRL_LINK)
+    cmds.connectAttr(out_attr, in_attr)
+
+def get_connected_controllers(influence):
+    """ Get all linked controllers """
+    attr = get_attr(influence, INF_LINK)
+    return cmds.listConnections(attr, d=False) or []
+
+def get_connected_influence(controller):
+    """ Get all linked controllers """
+    attr = get_attr(controller, CTRL_LINK)
+    return cmds.listConnections(attr, s=False) or []
+
 def add_control_mesh(xform, joint):
     """ Add a control mesh to the xform. Based on the joint """
     to_remove = []
@@ -126,6 +151,7 @@ def add_control_mesh(xform, joint):
     if to_remove:
         faces = convert_to_faces(to_remove)
         cmds.delete(faces)
+
 
 def create_invis_material():
     name = "invsible_material"
