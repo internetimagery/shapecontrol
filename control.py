@@ -7,6 +7,8 @@ TREE = lambda: collections.defaultdict(TREE)
 INF_LINK = "controllers"
 CTRL_LINK = "influence"
 
+# Utility
+
 def warning(text):
     """ Pop up a message """
     cmds.confirmDialog(t="Oh no!", m=text)
@@ -146,23 +148,6 @@ def get_connected_influence(controller):
     """ Get all linked controllers """
     attr = get_attr(controller, CTRL_LINK)
     return connections(attr, d=False)
-
-# def add_control_mesh(xform, joint):
-#     """ Add a control mesh to the xform. Based on the joint """
-#     to_remove = []
-#     for skin in get_skins(joint):
-#         for geo in get_geos(skin):
-#             influences = list(get_influences(skin))
-#             if joint in influences:
-#                 mesh = create_shape(geo, xform) # Add instance of geo to xform
-#                 inf_index = influences.index(joint)
-#                 for vert, weights in get_weights(skin):
-#                     for index in trim_weights(weights):
-#                         if inf_index != index:
-#                             to_remove.append("%s.vtx[%s]" % (mesh, vert))
-#     if to_remove:
-#         faces = convert_to_faces(to_remove)
-#         cmds.delete(faces)
 
 def create_invis_material():
     """ Make material to hide object """
