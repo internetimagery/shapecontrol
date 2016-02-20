@@ -213,7 +213,6 @@ def walk_children(obj):
 class GUI(object):
     """ Main Window """
     def __init__(s):
-        s.cache = Cache() # Cached functions
         name = "controlwin"
         height = 30
 
@@ -273,6 +272,8 @@ You can use this as a time saver for a quick and dirty setup.
         btns = [a.split("|")[-1] for a in cmds.radioCollection(s.create_type, q=True, cia=True)]
         control_type = btns.index(cmds.radioCollection(s.create_type, q=True, sl=True))
 
+        cache = Cache() # Speed up some function calls
+
         if control_type == 0:
             print "normal"
         if control_type == 1:
@@ -280,10 +281,9 @@ You can use this as a time saver for a quick and dirty setup.
         if control_type == 2:
             print "singular"
         if control_type == 3:
-            print "update"
-
-
-        print "joints", joints
+            for jnt in joints:
+                update_controller(jnt, cache)
+            print "Controllers Updated."
 
 
 def main():
