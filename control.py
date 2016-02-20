@@ -152,8 +152,8 @@ def add_control_mesh(xform, joint):
         faces = convert_to_faces(to_remove)
         cmds.delete(faces)
 
-
 def create_invis_material():
+    """ Make material to hide object """
     name = "invsible_material"
     if not cmds.objExists(name):
         name = cmds.shadingNode("surfaceShader", asShader=True, n=name)
@@ -163,8 +163,28 @@ def create_invis_material():
     return name
 
 def apply_material(obj, material):
+    """ Apply material to an object """
     for set_ in cmds.listConnections("%s.outColor" % material) or []:
         cmds.sets(obj, e=True, fe=set_)
+
+def get_selected_joints():
+    """ Get all joints in selection """
+    return cmds.ls(sl=True, type="joint")
+
+def update_controller(joint):
+    """ Update controllers given a joint """
+    controllers = get_connected_controllers(joint)
+    for controller in controllers:
+        shapes = cmds.listRelatives(controller, c=True, s=True) # Grab old shapes
+        cmds.delete(shapes) # Remove old shapes
+        add_control_mesh(controller, joint) # Add new mesh
+
+def build_controller(joint):
+    """ Create a new controller give a joint """
+    base = create_base(joint, "ctrl_%s" % joint) # Create base to insert
+    set_connected_controller(joint, base) # Link up controller
+    add_control_mesh(base, joint) # add mesh
+    return base
 
 def main():
     joints = cmds.ls(sl=True, type="joint")
