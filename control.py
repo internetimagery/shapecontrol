@@ -229,12 +229,29 @@ Joint Hierarchy: Use on selected joints and all decendants. Great for picking an
         cmds.menuItem(l="Selected Joints")
         cmds.menuItem(l="Joint Hierarchy")
 
-        s.match_hierarchy = cmds.checkBox(h=height, l="Match Hierarchy", ann="""
-Parent the controllers to each other such that they match the hierarchy of the chosen Joints.
+        s.create_type = cmds.radioCollection()
+        cmds.radioButton(l="Loose Controls", ann="""
+Create controls without any hierarchy.
+Use this if you're going to set up the controls yourself.
+""", sl=True)
+        cmds.radioButton(l="Match Hierarchy", ann="""
+Parent controls to one another to closely match the hierarchy of the picked skeleton.
+Useful when doing a 1:1 skeleton controller setup.
 """)
-        s.combine = cmds.checkBox(h=height, l="Unify Control", ann="""
-Create a single control only, incorporating influence from all joints.
+        cmds.radioButton(l="Force Single", ann="""
+Create only a single control, incorporating all influence from selected joints.
+Good for controls that will span multiple joints.
 """)
+        cmds.radioButton(l="Update Only", ann="""
+Only update existing controls tied to the selected joints.
+Use this when the rigs mesh or skinning has changed to reset control shapes to match.
+""")
+
+        s.constrain = cmds.checkBox(h=height, l="Constrain Joints", ann="""
+Parent constrain the controls to the joints.
+You can use this as a time saver for a quick and dirty setup.
+""")
+
         cmds.button(h=height, l="Create", c=s.run)
         cmds.showWindow(name)
 
@@ -246,6 +263,25 @@ Create a single control only, incorporating influence from all joints.
         if 2 == cmds.optionMenu(s.create_from, q=True, sl=True):
             children = (cmds.listRelatives(a, ad=True, type="joint") or [] for a in joints)
             joints |= set(b for a in children for b in a)
+
+        constrain = cmds.checkBox(s.constrain, q=True, v=True) # Do we constrain controllers?
+
+        container = "controller_grp"
+        if not cmds.objExists(container): # Build a container to hold our controllers
+            cmds.group(em=True, n=container)
+
+        btns = [a.split("|")[-1] for a in cmds.radioCollection(s.create_type, q=True, cia=True)]
+        control_type = btns.index(cmds.radioCollection(s.create_type, q=True, sl=True))
+
+        if control_type == 0:
+            print "normal"
+        if control_type == 1:
+            print "hierarchy"
+        if control_type == 2:
+            print "singular"
+        if control_type == 3:
+            print "update"
+
 
         print "joints", joints
 
