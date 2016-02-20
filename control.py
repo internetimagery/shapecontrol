@@ -30,70 +30,74 @@ def connections(*args, **kwargs):
     except ValueError:
         return []
 
-skinCache = collections.defaultdict(list)
-def get_skins(joint):
-    """ Yields skin names """
-    if joint in skinCache:
-        for skin in skinCache[joint]:
-            yield skin
-    else:
-        for skin in set(connections(joint, s=False, type="skinCluster")):
-            skinCache[joint].append(skin)
-            yield skin
+class Cache(object):
+    """ Cached Functions """
+    def __init__(s):
+        s.skinCache = collections.defaultdict(list)
+        s.geoCache = collections.defaultdict(list)
+        s.infCache = collections.defaultdict(list)
+        s.weightCache = TREE()
 
-geoCache = collections.defaultdict(list)
-def get_geos(skin):
-    """ Yields geomrety names """
-    if skin in geoCache:
-        for geo in geoCache[skin]:
-            yield geo
-    else:
-        for geo in cmds.skinCluster(skin, q=True, g=True) or []:
-            geoCache[skin].append(geo)
-            yield geo
+    def get_skins(s, joint):
+        """ Yields skin names """
+        if joint in s.skinCache:
+            for skin in s.skinCache[joint]:
+                yield skin
+        else:
+            for skin in set(connections(joint, s=False, type="skinCluster")):
+                s.skinCache[joint].append(skin)
+                yield skin
 
-infCache = collections.defaultdict(list)
-def get_influences(skin):
-    """ Yields joints """
-    if skin in infCache:
-        for inf in infCache[skin]:
-            yield inf
-    else:
-        for inf in cmds.skinCluster(skin, q=True, inf=True) or []:
-            infCache[skin].append(inf)
-            yield inf
+    def get_geos(s, skin):
+        """ Yields geomrety names """
+        if skin in s.geoCache:
+            for geo in s.geoCache[skin]:
+                yield geo
+        else:
+            for geo in cmds.skinCluster(skin, q=True, g=True) or []:
+                s.geoCache[skin].append(geo)
+                yield geo
 
-weightCache = TREE()
-def get_weights(skin):
-    """ Yields (vert ID, weights) """
-    # Cache operation for multiple calls
-    if skin not in weightCache:
-        skin_attr = "%s.weightList" % skin
-        for vert in cmds.getAttr(skin_attr, mi=True) or []:
-            vert_attr = "%s[%s].weights" % (skin_attr, vert)
-            weights = dict((a, cmds.getAttr("%s[%s]" % (vert_attr, a))) for a in cmds.getAttr(vert_attr, mi=True) or [])
-            weightCache[skin][vert] = weights
-    for vert, weights in weightCache[skin].iteritems():
-        yield vert, weights
+    def get_influences(s, skin):
+        """ Yields joints """
+        if skin in s.infCache:
+            for inf in s.infCache[skin]:
+                yield inf
+        else:
+            for inf in cmds.skinCluster(skin, q=True, inf=True) or []:
+                s.infCache[skin].append(inf)
+                yield inf
 
-def get_influence_include_exclude(joint):
-    """ Get verts included and excluded from influence """
-    geos = set()
-    inclusion = collections.defaultdict(list)
-    exclusion = collections.defaultdict(list)
-    for skin in get_skins(joint):
-        for geo in get_geos(skin):
-            geos.add(geo)
-            influences = list(get_influences(skin))
-            if joint in influences:
-                inf_index = influences.index(joint)
-                for vert, weights in get_weights(skin):
-                    for index in trim_weights(weights):
-                        if inf_index == index:
-                            inclusion[geo].append(vert)
-                        else:
-                            exclusion[geo].append(vert)
-    return geos, inclusion, exclusion
+    def get_weights(s, skin):
+        """ Yields (vert ID, weights) """
+        # Cache operation for multiple calls
+        if skin not in s.weightCache:
+            skin_attr = "%s.weightList" % skin
+            for vert in cmds.getAttr(skin_attr, mi=True) or []:
+                vert_attr = "%s[%s].weights" % (skin_attr, vert)
+                weights = dict((a, cmds.getAttr("%s[%s]" % (vert_attr, a))) for a in cmds.getAttr(vert_attr, mi=True) or [])
+                s.weightCache[skin][vert] = weights
+        for vert, weights in s.weightCache[skin].iteritems():
+            yield vert, weights
+
+    def get_influence_include_exclude(s, joint):
+        """ Get verts included and excluded from influence """
+        geos = set()
+        inclusion = collections.defaultdict(list)
+        exclusion = collections.defaultdict(list)
+        for skin in s.get_skins(joint):
+            for geo in s.get_geos(skin):
+                geos.add(geo)
+                influences = list(s.get_influences(skin))
+                if joint in influences:
+                    inf_index = influences.index(joint)
+                    for vert, weights in s.get_weights(skin):
+                        for index in trim_weights(weights):
+                            if inf_index == index:
+                                inclusion[geo].append(vert)
+                            else:
+                                exclusion[geo].append(vert)
+        return geos, inclusion, exclusion
 
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
@@ -168,13 +172,13 @@ def get_selected_joints():
     """ Get all joints in selection """
     return cmds.ls(sl=True, type="joint")
 
-def update_controller(joint):
+def update_controller(joint, cache):
     """ Update controllers given a joint """
     controllers = get_connected_controllers(joint)
     for controller in controllers:
         shapes = cmds.listRelatives(controller, c=True, s=True) # Grab old shapes
         cmds.delete(shapes) # Remove old shapes
-        geos, include, exclude = get_influence_include_exclude(joint) # find out what affects joint
+        geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
         for geo in geos: # Run through meshes
             shape = create_shape(geo, controller) # Add mesh
             try:
@@ -184,12 +188,14 @@ def update_controller(joint):
             except ValueError: # Nothing to exclude? Moving on!
                 pass
 
-def build_controller(joint):
+def build_controller(joint, cache):
     """ Create a new controller give a joint """
-    geos, include, exclude = get_influence_include_exclude(joint) # find out what affects joint
+    geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
     if geos: # Check this joint actually has something to connect to
+        material = create_invis_material()
         base = create_base(joint, "ctrl_%s" % joint) # make base to hold control mesh
         set_connected_controller(joint, base) # Link up control to joint
+        apply_material(base, material) # Make invisible
         for geo in geos: # Run through meshes
             shape = create_shape(geo, base) # Add mesh
             try:
@@ -199,6 +205,50 @@ def build_controller(joint):
             except ValueError: # Nothing to exclude? Moving on!
                 pass
         return base
+
+def walk_children(obj):
+    """ Walk down the hierarchy """
+    children = cmds.listRelatives(obj, c=True) or []
+
+class GUI(object):
+    """ Main Window """
+    def __init__(s):
+        s.cache = Cache() # Cached functions
+        name = "controlwin"
+        height = 30
+
+        if cmds.window(name, q=True, ex=True):
+            cmds.deleteUI(name)
+        cmds.window(name, t="Contoller Setup", rtf=True)
+        cmds.columnLayout(adj=True)
+
+        s.create_from = cmds.optionMenu(h=height, l="Create from:", ann="""
+Selected Joints: Use only joints selected. Useful if you have joints you wish to skip.
+Joint Hierarchy: Use on selected joints and all decendants. Great for picking an entire skeleton from the root.
+""")
+        cmds.menuItem(l="Selected Joints")
+        cmds.menuItem(l="Joint Hierarchy")
+
+        s.match_hierarchy = cmds.checkBox(h=height, l="Match Hierarchy", ann="""
+Parent the controllers to each other such that they match the hierarchy of the chosen Joints.
+""")
+        s.combine = cmds.checkBox(h=height, l="Unify Control", ann="""
+Create a single control only, incorporating influence from all joints.
+""")
+        cmds.button(h=height, l="Create", c=s.run)
+        cmds.showWindow(name)
+
+    def run(s, _):
+        joints = set(cmds.ls(sl=True, type="joint"))
+        if not joints: return warning("Please select some joints. :)")
+
+        # Check if hierarchy is requested
+        if 2 == cmds.optionMenu(s.create_from, q=True, sl=True):
+            children = (cmds.listRelatives(a, ad=True, type="joint") or [] for a in joints)
+            joints |= set(b for a in children for b in a)
+
+        print "joints", joints
+
 
 def main():
     joints = cmds.ls(sl=True, type="joint")
@@ -245,14 +295,14 @@ def prep_test():
     skin = cmds.skinCluster(sphere, jnt1, jnt2)[0] # Add skin to sphere
     cmds.select(jnt1, jnt2, r=True)
 
-    build_controller(jnt2)
+    build_controller(jnt2, Cache())
 
 if __name__ == '__main__':
     # prep_test()
 
-    jnt = cmds.ls(sl=True, type="joint")
-    update_controller(jnt[0])
-
+    # jnt = cmds.ls(sl=True, type="joint")
+    # update_controller(jnt[0], Cache())
+    GUI()
     # main()
 
 
