@@ -67,19 +67,24 @@ def get_weights(skin):
     for vert, weights in weightCache[skin].iteritems():
         yield vert, weights
 
-def get_influence_exclusion(joint):
-    """ Get verts excluded from influence """
+def get_influence_include_exclude(joint):
+    """ Get verts included and excluded from influence """
+    geos = set()
+    inclusion = collections.defaultdict(list)
     exclusion = collections.defaultdict(list)
     for skin in get_skins(joint):
         for geo in get_geos(skin):
+            geos.add(geo)
             influences = list(get_influences(skin))
             if joint in influences:
                 inf_index = influences.index(joint)
                 for vert, weights in get_weights(skin):
                     for index in trim_weights(weights):
-                        if inf_index != index:
+                        if inf_index == index:
+                            inclusion[geo].append(vert)
+                        else:
                             exclusion[geo].append(vert)
-    return exclusion
+    return geos, inclusion, exclusion
 
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
@@ -135,22 +140,22 @@ def get_connected_influence(controller):
     attr = get_attr(controller, CTRL_LINK)
     return cmds.listConnections(attr, s=False) or []
 
-def add_control_mesh(xform, joint):
-    """ Add a control mesh to the xform. Based on the joint """
-    to_remove = []
-    for skin in get_skins(joint):
-        for geo in get_geos(skin):
-            influences = list(get_influences(skin))
-            if joint in influences:
-                mesh = create_shape(geo, xform) # Add instance of geo to xform
-                inf_index = influences.index(joint)
-                for vert, weights in get_weights(skin):
-                    for index in trim_weights(weights):
-                        if inf_index != index:
-                            to_remove.append("%s.vtx[%s]" % (mesh, vert))
-    if to_remove:
-        faces = convert_to_faces(to_remove)
-        cmds.delete(faces)
+# def add_control_mesh(xform, joint):
+#     """ Add a control mesh to the xform. Based on the joint """
+#     to_remove = []
+#     for skin in get_skins(joint):
+#         for geo in get_geos(skin):
+#             influences = list(get_influences(skin))
+#             if joint in influences:
+#                 mesh = create_shape(geo, xform) # Add instance of geo to xform
+#                 inf_index = influences.index(joint)
+#                 for vert, weights in get_weights(skin):
+#                     for index in trim_weights(weights):
+#                         if inf_index != index:
+#                             to_remove.append("%s.vtx[%s]" % (mesh, vert))
+#     if to_remove:
+#         faces = convert_to_faces(to_remove)
+#         cmds.delete(faces)
 
 def create_invis_material():
     """ Make material to hide object """
@@ -177,14 +182,31 @@ def update_controller(joint):
     for controller in controllers:
         shapes = cmds.listRelatives(controller, c=True, s=True) # Grab old shapes
         cmds.delete(shapes) # Remove old shapes
-        add_control_mesh(controller, joint) # Add new mesh
+        geos, include, exclude = get_influence_include_exclude(joint) # find out what affects joint
+        for geo in geos: # Run through meshes
+            shape = create_shape(geo, base) # Add mesh
+            try:
+                verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
+                faces = convert_to_faces(verts)
+                cmds.delete(faces)
+            except ValueError: # Nothing to exclude? Moving on!
+                pass
 
 def build_controller(joint):
     """ Create a new controller give a joint """
-    base = create_base(joint, "ctrl_%s" % joint) # Create base to insert
-    set_connected_controller(joint, base) # Link up controller
-    add_control_mesh(base, joint) # add mesh
-    return base
+    geos, include, exclude = get_influence_include_exclude(joint) # find out what affects joint
+    if geos: # Check this joint actually has something to connect to
+        base = create_base(joint, "ctrl_%s" % joint) # make base to hold control mesh
+        set_connected_controller(joint, base) # Link up control to joint
+        for geo in geos: # Run through meshes
+            shape = create_shape(geo, base) # Add mesh
+            try:
+                verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
+                faces = convert_to_faces(verts)
+                cmds.delete(faces)
+            except ValueError: # Nothing to exclude? Moving on!
+                pass
+        return base
 
 def main():
     joints = cmds.ls(sl=True, type="joint")
