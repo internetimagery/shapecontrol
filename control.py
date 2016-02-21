@@ -299,11 +299,15 @@ You can use this as a time saver for a quick and dirty setup.
                             cmds.parent(base, container)
                             new_controls[jnt] = base
                         inject_shape(base, geos, inc, exc)
-                if base:
-                    print "Created control %s." % base
+                print "Created control."
             if control_type == 3:
-                for jnt in joints:
-                    update_controller(jnt, cache)
+                for jnt, inf in info.iteritems(): # Walk through info
+                    geos, inc, exc = inf
+                    for base in get_connected_controllers(jnt):
+                        shapes = cmds.listRelatives(base, c=True, s=True) # Grab old shapes
+                        cmds.delete(shapes) # Remove old shapes
+                        if geos:
+                            inject_shape(base, geos, inc, exc)
                 print "Controllers Updated."
             if new_controls:
                 if constrain:
