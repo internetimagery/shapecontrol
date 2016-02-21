@@ -4,8 +4,11 @@ import collections
 import maya.cmds as cmds
 
 TREE = lambda: collections.defaultdict(TREE)
-INF_LINK = "ooc_controllers"
-CTRL_LINK = "ooc_influence"
+CTRL_LINK = "oocController"
+INF_LINK = "oocInfluence"
+PICKER__INF_LINK = "oocPickerInfluence"
+PICKER__CTRL_LINK = "oocPickerController"
+
 
 # Utility
 
@@ -26,9 +29,9 @@ def get_attr(node, attr, create=False):
 def connections(*args, **kwargs):
     """ Grab connections """
     try:
-        return cmds.listConnections(*args, **kwargs) or []
+        return set(cmds.listConnections(*args, **kwargs) or [])
     except ValueError:
-        return []
+        return set()
 
 class Cache(object):
     """ Cached Functions """
@@ -44,7 +47,7 @@ class Cache(object):
             for skin in s.skinCache[joint]:
                 yield skin
         else:
-            for skin in set(connections(joint, s=False, type="skinCluster")):
+            for skin in connections(joint, s=False, type="skinCluster"):
                 s.skinCache[joint].append(skin)
                 yield skin
 
@@ -136,24 +139,19 @@ def create_base(target, name):
     """ Create a base transform on the target """
     name = cmds.group(em=True, n=name)
     cmds.xform(name, ws=True, m=cmds.xform(target, q=True, ws=True, m=True))
-    set_connected_controller(target, name)
+    set_link(target, name, CTRL_LINK, INF_LINK)
     return name
 
-def set_connected_controller(influence, controller):
-    """ Forge a link to a controller """
-    out_attr = get_attr(influence, INF_LINK, True)
-    in_attr = get_attr(controller, CTRL_LINK, True)
-    cmds.connectAttr(out_attr, in_attr)
+def set_link(from_, to, out, in_):
+    """ Forge a link """
+    out_attr = get_attr(from_, out, True)
+    in_attr = get_attr(to, in_, True)
+    cmds.connectAttr(out_attr, in_attr, f=True)
 
-def get_connected_controllers(influence):
-    """ Get all linked controllers """
-    attr = get_attr(influence, INF_LINK)
-    return connections(attr, s=False)
-
-def get_connected_influence(controller):
-    """ Get all linked controllers """
-    attr = get_attr(controller, CTRL_LINK)
-    return connections(attr, d=False)
+def get_link(from_, link, **kwargs):
+    """ Get linked objects """
+    attr = get_attr(from_, link)
+    return connections(attr, **kwargs)
 
 def create_invis_material():
     """ Make material to hide object """
@@ -174,36 +172,19 @@ def get_selected_joints():
     """ Get all joints in selection """
     return cmds.ls(sl=True, type="joint")
 
-def inject_shape(xform, geos, include, exclude):
+def inject_shapes(influence, xform, geos, include, exclude):
     """ Add shaped mesh to xform """
     material = create_invis_material()
     for geo in geos:
         shape = create_shape(geo, xform)
         apply_material(shape, material) # Make invisible
+        set_link(influence, shape, PICKER__CTRL_LINK, PICKER__INF_LINK)
         try:
             verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
             faces = convert_to_faces(verts)
             cmds.delete(faces)
         except ValueError: # Nothing to exclude? Moving on!
             pass
-
-def update_controller(joint, cache):
-    """ Update controllers given a joint """
-    controllers = get_connected_controllers(joint)
-    for controller in controllers:
-        shapes = cmds.listRelatives(controller, c=True, s=True) # Grab old shapes
-        cmds.delete(shapes) # Remove old shapes
-        geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
-        inject_shape(controller, geos, include, exclude)
-
-def build_controller(joint, cache):
-    """ Create a new controller give a joint """
-    geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
-    if geos: # Check this joint actually has something to connect to
-        base = create_base(joint, "ctrl_%s" % joint) # make base to hold control mesh
-        set_connected_controller(joint, base) # Link up control to joint
-        inject_shape(base, geos, include, exclude)
-        return base
 
 def walk_children(obj):
     """ Walk down the hierarchy """
@@ -278,18 +259,18 @@ You can use this as a time saver for a quick and dirty setup.
         new_controls = {}
         info = dict((a, cache.get_influence_include_exclude(a)) for a in joints)
         try:
-            if control_type == 0:
+            if control_type == 0: # loose control
                 for jnt, inf in info.iteritems(): # Walk through info
                     geos, inc, exc = inf
                     if geos:
                         base = create_base(jnt, "ctrl_%s" % jnt)
                         cmds.parent(base, container)
-                        inject_shape(base, geos, inc, exc)
                         new_controls[jnt] = base
+                        inject_shapes(jnt, base, geos, inc, exc) # link up shapes
                 print "Created controllers."
-            if control_type == 1:
+            if control_type == 1: # Match hierarchy
                 print "hierarchy"
-            if control_type == 2:
+            if control_type == 2: # Single control
                 base = None
                 for i, (jnt, inf) in enumerate(info.iteritems()):
                     geos, inc, exc = inf
@@ -298,16 +279,27 @@ You can use this as a time saver for a quick and dirty setup.
                             base = create_base(jnt, "ctrl_%s" % jnt)
                             cmds.parent(base, container)
                             new_controls[jnt] = base
-                        inject_shape(base, geos, inc, exc)
-                print "Created control."
-            if control_type == 3:
+                        inject_shapes(jnt, base, geos, inc, exc)
+                if base:
+                    print "Created control."
+            if control_type == 3: # Update control
                 for jnt, inf in info.iteritems(): # Walk through info
                     geos, inc, exc = inf
                     for base in get_connected_controllers(jnt):
-                        shapes = cmds.listRelatives(base, c=True, s=True) # Grab old shapes
-                        cmds.delete(shapes) # Remove old shapes
-                        if geos:
-                            inject_shape(base, geos, inc, exc)
+                        try:
+                            connected_shapes = [] # Grab shapes that were connected
+                            for shape in cmds.listRelatives(base, c=True, s=True) or []:
+                                for delete_node in cmds.listConnections("%s.inMesh" % shape) or []:
+                                    for inverse in cmds.listConnections("%s.inputGeometry" % delete_node) or []:
+                                        for mesh in cmds.listConnections("%s.inputGeometry" % inverse, sh=True) or []:
+                                            connected_shapes.append(mesh)
+
+                        except ValueError:
+                            pass
+
+                        # cmds.delete(shapes) # Remove old shapes
+                        # if geos:
+                        #     inject_shapes(base, geos, inc, exc)
                 print "Controllers Updated."
             if new_controls:
                 if constrain:
