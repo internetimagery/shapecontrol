@@ -283,23 +283,24 @@ You can use this as a time saver for a quick and dirty setup.
                     geos, inc, exc = inf
                     if geos:
                         base = create_base(jnt, "ctrl_%s" % jnt)
-                        inject_shape(base, geos, inc, exc)
                         cmds.parent(base, container)
+                        inject_shape(base, geos, inc, exc)
                         new_controls[jnt] = base
                 print "Created controllers."
             if control_type == 1:
                 print "hierarchy"
             if control_type == 2:
-                for i, jnt in enumerate(joints):
-                    if not i:
-                        base = build_controller(jnt, cache) # first the base
-                        cmds.parent(base, container)
-                        new_controls[jnt] = base
-                    else:
-                        geos, include, exclude = cache.get_influence_include_exclude(jnt) # find out what affects joint
-                        if geos:
-                            inject_shape(base, geos, include, exclude)
-                print "Created control %s." % base
+                base = None
+                for i, (jnt, inf) in enumerate(info.iteritems()):
+                    geos, inc, exc = inf
+                    if geos:
+                        if not base:
+                            base = create_base(jnt, "ctrl_%s" % jnt)
+                            cmds.parent(base, container)
+                            new_controls[jnt] = base
+                        inject_shape(base, geos, inc, exc)
+                if base:
+                    print "Created control %s." % base
             if control_type == 3:
                 for jnt in joints:
                     update_controller(jnt, cache)
