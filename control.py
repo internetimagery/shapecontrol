@@ -174,15 +174,16 @@ def get_selected_joints():
 
 def inject_shape(xform, geos, include, exclude):
     """ Add shaped mesh to xform """
+    material = create_invis_material()
     for geo in geos:
         shape = create_shape(geo, xform)
+        apply_material(shape, material) # Make invisible
         try:
             verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
             faces = convert_to_faces(verts)
             cmds.delete(faces)
         except ValueError: # Nothing to exclude? Moving on!
             pass
-
 
 def update_controller(joint, cache):
     """ Update controllers given a joint """
@@ -197,10 +198,8 @@ def build_controller(joint, cache):
     """ Create a new controller give a joint """
     geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
     if geos: # Check this joint actually has something to connect to
-        material = create_invis_material()
         base = create_base(joint, "ctrl_%s" % joint) # make base to hold control mesh
         set_connected_controller(joint, base) # Link up control to joint
-        apply_material(base, material) # Make invisible
         inject_shape(base, geos, include, exclude)
         return base
 
@@ -287,15 +286,14 @@ You can use this as a time saver for a quick and dirty setup.
             if control_type == 2:
                 for i, jnt in enumerate(joints):
                     if not i:
-                        first_joint = jnt
-                        base = build_controller(first_joint, cache) # first the base
+                        base = build_controller(jnt, cache) # first the base
+                        cmds.parent(base, container)
+                        if constrain:
+                            cmds.parentConstraint(base, jnt)
                     else:
                         geos, include, exclude = cache.get_influence_include_exclude(jnt) # find out what affects joint
                         if geos:
                             inject_shape(base, geos, include, exclude)
-                cmds.parent(base, container)
-                if constrain:
-                    cmds.parentConstraint(base, first_joint)
                 print "Created control %s." % base
             if control_type == 3:
                 for jnt in joints:
