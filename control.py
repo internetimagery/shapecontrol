@@ -172,6 +172,18 @@ def get_selected_joints():
     """ Get all joints in selection """
     return cmds.ls(sl=True, type="joint")
 
+def inject_shape(xform, geos, include, exclude):
+    """ Add shaped mesh to xform """
+    for geo in geos:
+        shape = create_shape(geo, xform)
+        try:
+            verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
+            faces = convert_to_faces(verts)
+            cmds.delete(faces)
+        except ValueError: # Nothing to exclude? Moving on!
+            pass
+
+
 def update_controller(joint, cache):
     """ Update controllers given a joint """
     controllers = get_connected_controllers(joint)
@@ -179,14 +191,7 @@ def update_controller(joint, cache):
         shapes = cmds.listRelatives(controller, c=True, s=True) # Grab old shapes
         cmds.delete(shapes) # Remove old shapes
         geos, include, exclude = cache.get_influence_include_exclude(joint) # find out what affects joint
-        for geo in geos: # Run through meshes
-            shape = create_shape(geo, controller) # Add mesh
-            try:
-                verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
-                faces = convert_to_faces(verts)
-                cmds.delete(faces)
-            except ValueError: # Nothing to exclude? Moving on!
-                pass
+        inject_shape(controller, geos, include, exclude)
 
 def build_controller(joint, cache):
     """ Create a new controller give a joint """
@@ -196,14 +201,7 @@ def build_controller(joint, cache):
         base = create_base(joint, "ctrl_%s" % joint) # make base to hold control mesh
         set_connected_controller(joint, base) # Link up control to joint
         apply_material(base, material) # Make invisible
-        for geo in geos: # Run through meshes
-            shape = create_shape(geo, base) # Add mesh
-            try:
-                verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
-                faces = convert_to_faces(verts)
-                cmds.delete(faces)
-            except ValueError: # Nothing to exclude? Moving on!
-                pass
+        inject_shape(base, geos, include, exclude)
         return base
 
 def walk_children(obj):
@@ -280,24 +278,25 @@ You can use this as a time saver for a quick and dirty setup.
             if control_type == 0:
                 for jnt in joints:
                     control = build_controller(jnt, cache)
+                    cmds.parent(control, container)
                     if control and constrain:
                         cmds.parentConstraint(control, jnt)
                 print "Created controllers."
             if control_type == 1:
                 print "hierarchy"
             if control_type == 2:
-                print "TODO: Make this work!"
-                return
-                controllers = [build_controller(a, cache) for a in joints if a]
-                base_ctrl = controllers[0]
-                if 1 < len(controllers):
-                    for control in controllers[1:]: # Pull out all shapes from controls and mush into one
-                        for shape in cmds.listRelatives(control, c=True, s=True) or []:
-                            print shape
-                            cmds.parent(shape, base_ctrl, a=True, add=True, s=True)
-                        cmds.delete(control) # Remove empty husk!
-                cmds.parent(base_ctrl, container) # Keep organised!
-                print "Created control %s." % base_ctrl
+                for i, jnt in enumerate(joints):
+                    if not i:
+                        first_joint = jnt
+                        base = build_controller(first_joint, cache) # first the base
+                    else:
+                        geos, include, exclude = cache.get_influence_include_exclude(jnt) # find out what affects joint
+                        if geos:
+                            inject_shape(base, geos, include, exclude)
+                cmds.parent(base, container)
+                if constrain:
+                    cmds.parentConstraint(base, first_joint)
+                print "Created control %s." % base
             if control_type == 3:
                 for jnt in joints:
                     update_controller(jnt, cache)
