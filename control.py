@@ -6,8 +6,8 @@ import maya.cmds as cmds
 TREE = lambda: collections.defaultdict(TREE)
 CTRL_LINK = "oocController"
 INF_LINK = "oocInfluence"
-PICKER__INF_LINK = "oocPickerInfluence"
-PICKER__CTRL_LINK = "oocPickerController"
+PICKER_INF_LINK = "oocPickerInfluence"
+PICKER_CTRL_LINK = "oocPickerController"
 
 
 # Utility
@@ -22,8 +22,11 @@ def ask(question):
 
 def get_attr(node, attr, create=False):
     """ Get attribute. Creating one if it doesn't exist """
-    if not cmds.attributeQuery(attr, n=node, ex=True) and create:
-        cmds.addAttr(node, ln=attr, s=True)
+    if create:
+        try:
+            cmds.addAttr(node, ln=attr, s=True)
+        except RuntimeError:
+            pass
     return node + "." + attr
 
 def connections(*args, **kwargs):
@@ -178,7 +181,7 @@ def inject_shapes(influence, xform, geos, include, exclude):
     for geo in geos:
         shape = create_shape(geo, xform)
         apply_material(shape, material) # Make invisible
-        set_link(influence, shape, PICKER__CTRL_LINK, PICKER__INF_LINK)
+        set_link(influence, shape, PICKER_CTRL_LINK, PICKER_INF_LINK)
         try:
             verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
             faces = convert_to_faces(verts)
@@ -283,23 +286,17 @@ You can use this as a time saver for a quick and dirty setup.
                 if base:
                     print "Created control."
             if control_type == 3: # Update control
-                for jnt, inf in info.iteritems(): # Walk through info
-                    geos, inc, exc = inf
-                    for base in get_connected_controllers(jnt):
-                        try:
-                            connected_shapes = [] # Grab shapes that were connected
-                            for shape in cmds.listRelatives(base, c=True, s=True) or []:
-                                for delete_node in cmds.listConnections("%s.inMesh" % shape) or []:
-                                    for inverse in cmds.listConnections("%s.inputGeometry" % delete_node) or []:
-                                        for mesh in cmds.listConnections("%s.inputGeometry" % inverse, sh=True) or []:
-                                            connected_shapes.append(mesh)
-
-                        except ValueError:
-                            pass
-
-                        # cmds.delete(shapes) # Remove old shapes
-                        # if geos:
-                        #     inject_shapes(base, geos, inc, exc)
+                for jnt in joints:
+                    for control in get_link(jnt, CTRL_LINK, s=False, type="transform"): # get controllers
+                        for shape in cmds.listRelatives(control, c=True, s=True) or []:
+                            influences = get_link(shape, PICKER_INF_LINK, d=False, type="joint")
+                            cmds.delete(shape)
+                            for influence in influences:
+                                if influence not in info:
+                                    info[influence] = get_influence_include_exclude(influence)
+                                geos, inc, exc = info[influence]
+                                if geos:
+                                    inject_shapes(influence, control, geos, inc, exc)
                 print "Controllers Updated."
             if new_controls:
                 if constrain:
