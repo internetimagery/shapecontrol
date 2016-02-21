@@ -189,6 +189,15 @@ def inject_shapes(influence, xform, geos, include, exclude):
         except ValueError: # Nothing to exclude? Moving on!
             pass
 
+def walk_up(obj):
+    """ Walk up to root """
+    parent = cmds.listRelatives(obj, p=True)
+    if parent:
+        parent = parent[0]
+        yield parent
+        for p in walk_up(parent):
+            yield p
+
 def walk_children(obj):
     """ Walk down the hierarchy """
     children = cmds.listRelatives(obj, c=True) or []
@@ -272,6 +281,19 @@ You can use this as a time saver for a quick and dirty setup.
                         inject_shapes(jnt, base, geos, inc, exc) # link up shapes
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
+                for jnt, inf in info.iteritems():
+                    print jnt, list(walk_up(jnt))
+
+
+
+
+
+
+
+
+
+
+
                 print "hierarchy"
             if control_type == 2: # Single control
                 base = None
