@@ -86,13 +86,13 @@ class Cache(object):
         inclusion = collections.defaultdict(list)
         exclusion = collections.defaultdict(list)
         for skin in s.get_skins(joint):
-            for geo in s.get_geos(skin):
-                geos.add(geo)
-                influences = list(s.get_influences(skin))
-                if joint in influences:
-                    inf_index = influences.index(joint)
-                    for vert, weights in s.get_weights(skin):
-                        for index in trim_weights(weights):
+            influences = list(s.get_influences(skin))
+            if joint in influences:
+                inf_index = influences.index(joint)
+                for vert, weights in s.get_weights(skin):
+                    for index in trim_weights(weights):
+                        for geo in s.get_geos(skin):
+                            geos.add(geo)
                             if inf_index == index:
                                 inclusion[geo].append(vert)
                             else:
@@ -108,7 +108,8 @@ def trim_weights(weights):
 
 def convert_to_faces(selection):
     """ Turn a selection into a conservative face selection """
-    return cmds.polyListComponentConversion(selection, tf=True, internal=True)
+    return cmds.polyListComponentConversion(selection, tf=True)
+    # return cmds.polyListComponentConversion(selection, tf=True, internal=True)
 
 def create_shape(geo, xform):
     """ Create a Control that mimics the base geo """
@@ -135,6 +136,7 @@ def create_base(target, name):
     """ Create a base transform on the target """
     name = cmds.group(em=True, n=name)
     cmds.xform(name, ws=True, m=cmds.xform(target, q=True, ws=True, m=True))
+    set_connected_controller(target, name)
     return name
 
 def set_connected_controller(influence, controller):
@@ -273,13 +275,17 @@ You can use this as a time saver for a quick and dirty setup.
 
         err = cmds.undoInfo(openChunk=True)
         cmds.select(cl=True)
+        new_controls = {}
+        info = dict((a, cache.get_influence_include_exclude(a)) for a in joints)
         try:
             if control_type == 0:
-                for jnt in joints:
-                    control = build_controller(jnt, cache)
-                    cmds.parent(control, container)
-                    if control and constrain:
-                        cmds.parentConstraint(control, jnt)
+                for jnt, inf in info.iteritems(): # Walk through info
+                    geos, inc, exc = inf
+                    if geos:
+                        base = create_base(jnt, "ctrl_%s" % jnt)
+                        inject_shape(base, geos, inc, exc)
+                        cmds.parent(base, container)
+                        new_controls[jnt] = base
                 print "Created controllers."
             if control_type == 1:
                 print "hierarchy"
@@ -288,8 +294,7 @@ You can use this as a time saver for a quick and dirty setup.
                     if not i:
                         base = build_controller(jnt, cache) # first the base
                         cmds.parent(base, container)
-                        if constrain:
-                            cmds.parentConstraint(base, jnt)
+                        new_controls[jnt] = base
                     else:
                         geos, include, exclude = cache.get_influence_include_exclude(jnt) # find out what affects joint
                         if geos:
@@ -299,6 +304,11 @@ You can use this as a time saver for a quick and dirty setup.
                 for jnt in joints:
                     update_controller(jnt, cache)
                 print "Controllers Updated."
+            if new_controls:
+                if constrain:
+                    for jnt, control in new_controls.iteritems():
+                        cmds.parentConstraint(control, jnt)
+                cmds.select(new_controls.values(), r=True)
         except Exception as err:
             raise
         finally:
