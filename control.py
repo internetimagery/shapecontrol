@@ -175,19 +175,20 @@ def get_selected_joints():
     """ Get all joints in selection """
     return cmds.ls(sl=True, type="joint")
 
-def inject_shapes(influence, xform, geos, include, exclude):
+def inject_shapes(influence, xform, geos, include, exclude, delete=True):
     """ Add shaped mesh to xform """
     material = create_invis_material()
     for geo in geos:
         shape = create_shape(geo, xform)
         apply_material(shape, material) # Make invisible
         set_link(influence, shape, PICKER_CTRL_LINK, PICKER_INF_LINK)
-        try:
-            verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
-            faces = convert_to_faces(verts)
-            cmds.delete(faces)
-        except ValueError: # Nothing to exclude? Moving on!
-            pass
+        if delete:
+            try:
+                verts = ["%s.vtx[%s]" % (shape, a) for a in exclude[geo]]
+                faces = convert_to_faces(verts)
+                cmds.delete(faces)
+            except ValueError: # Nothing to exclude? Moving on!
+                pass
 
 def walk_up(obj):
     """ Walk up to root """
@@ -238,10 +239,19 @@ Only update existing controls tied to the selected joints.
 Use this when the rigs mesh or skinning has changed to reset control shapes to match.
 """)
 
-        s.constrain = cmds.checkBox(h=height, l="Constrain Joints", ann="""
+        cmds.separator()
+
+        s.constrain = cmds.checkBox(l="Constrain Joints", ann="""
 Parent constrain the controls to the joints.
 You can use this as a time saver for a quick and dirty setup.
 """)
+
+        s.auto = cmds.checkBox(l="Automatic control shaping", ann="""
+Shape the controls based on the joints influence.
+The alternative is to manually go into each control and delete the faces you do not wish to be there.
+Untick this only when getting undesired results from auto.
+""", v=True)
+
 
         cmds.button(h=height, l="Create", c=s.run)
         cmds.showWindow(name)
@@ -256,6 +266,7 @@ You can use this as a time saver for a quick and dirty setup.
             joints |= set(b for a in children for b in a)
 
         constrain = cmds.checkBox(s.constrain, q=True, v=True) # Do we constrain controllers?
+        auto = cmds.checkBox(s.auto, q=True, v=True) # Do we automatically delete faces?
 
         container = "controller_grp"
         if not cmds.objExists(container): # Build a container to hold our controllers
@@ -278,7 +289,7 @@ You can use this as a time saver for a quick and dirty setup.
                         base = create_base(jnt, "%s_ctrl" % jnt)
                         cmds.parent(base, container)
                         new_controls[jnt] = base
-                        inject_shapes(jnt, base, geos, inc, exc) # link up shapes
+                        inject_shapes(jnt, base, geos, inc, exc) # link up shape, autos
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
                 bases = dict((a, create_base(a, "%s_ctrl" % a)) for a, b in info.iteritems() if b[0]) # Build out our bases
@@ -291,7 +302,7 @@ You can use this as a time saver for a quick and dirty setup.
                             break
                     else:
                         cmds.parent(bases[jnt], container)
-                    inject_shapes(jnt, base, geos, inc, exc)
+                    inject_shapes(jnt, base, geos, inc, exc, auto)
                 print "Created controls, matching hierarchy."
             if control_type == 2: # Single control
                 base = None
@@ -302,7 +313,7 @@ You can use this as a time saver for a quick and dirty setup.
                             base = create_base(jnt, "%s_ctrl" % jnt)
                             cmds.parent(base, container)
                             new_controls[jnt] = base
-                        inject_shapes(jnt, base, geos, inc, exc)
+                        inject_shapes(jnt, base, geos, inc, exc, auto)
                 if base:
                     print "Created control."
             if control_type == 3: # Update control
@@ -316,7 +327,7 @@ You can use this as a time saver for a quick and dirty setup.
                                     info[influence] = get_influence_include_exclude(influence)
                                 geos, inc, exc = info[influence]
                                 if geos:
-                                    inject_shapes(influence, control, geos, inc, exc)
+                                    inject_shapes(influence, control, geos, inc, exc, auto)
                 print "Controllers Updated."
             if new_controls:
                 if constrain:
