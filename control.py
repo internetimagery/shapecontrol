@@ -275,33 +275,31 @@ You can use this as a time saver for a quick and dirty setup.
                 for jnt, inf in info.iteritems(): # Walk through info
                     geos, inc, exc = inf
                     if geos:
-                        base = create_base(jnt, "ctrl_%s" % jnt)
+                        base = create_base(jnt, "%s_ctrl" % jnt)
                         cmds.parent(base, container)
                         new_controls[jnt] = base
                         inject_shapes(jnt, base, geos, inc, exc) # link up shapes
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
-                for jnt, inf in info.iteritems():
-                    print jnt, list(walk_up(jnt))
-
-
-
-
-
-
-
-
-
-
-
-                print "hierarchy"
+                bases = dict((a, create_base(a, "%s_ctrl" % a)) for a, b in info.iteritems() if b[0]) # Build out our bases
+                for jnt, base in bases.iteritems():
+                    geos, inc, exc = info[jnt]
+                    new_controls[jnt] = base
+                    for parent in walk_up(jnt): # Match Hierarchy.
+                        if parent in bases:
+                            cmds.parent(bases[jnt], bases[parent])
+                            break
+                    else:
+                        cmds.parent(bases[jnt], container)
+                    inject_shapes(jnt, base, geos, inc, exc)
+                print "Created controls, matching hierarchy."
             if control_type == 2: # Single control
                 base = None
                 for i, (jnt, inf) in enumerate(info.iteritems()):
                     geos, inc, exc = inf
                     if geos:
                         if not base:
-                            base = create_base(jnt, "ctrl_%s" % jnt)
+                            base = create_base(jnt, "%s_ctrl" % jnt)
                             cmds.parent(base, container)
                             new_controls[jnt] = base
                         inject_shapes(jnt, base, geos, inc, exc)
