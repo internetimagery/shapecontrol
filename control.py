@@ -36,6 +36,15 @@ def connections(*args, **kwargs):
     except ValueError:
         return set()
 
+def unique_name(name):
+    """ Create a unique name """
+    i = 0
+    working_name = name
+    while cmds.objExists(working_name):
+        i += 1
+        working_name = "%s_%s" % (name, i)
+    return working_name
+
 class Cache(object):
     """ Cached Functions """
     def __init__(s):
@@ -108,9 +117,10 @@ class Cache(object):
 def trim_weights(weights):
     """ Yields index(s) of winning weight(s) """
     highest = max(weights.values())
-    for i, weight in weights.iteritems():
-        if weight == highest: # Tie breaker, keep both!
-            yield i
+    if 0.001 < highest: # Cut off threshold
+        for i, weight in weights.iteritems():
+            if weight == highest: # Tie breaker, keep both!
+                yield i
 
 def convert_to_faces(selection):
     """ Turn a selection into a conservative face selection """
@@ -140,7 +150,7 @@ def create_shape(geo, xform):
 
 def create_base(target, name):
     """ Create a base transform on the target """
-    name = cmds.group(em=True, n=name)
+    name = cmds.group(em=True, n=unique_name(name))
     cmds.xform(name, ws=True, m=cmds.xform(target, q=True, ws=True, m=True))
     set_link(target, name, CTRL_LINK, INF_LINK)
     return name
@@ -175,7 +185,7 @@ def get_selected_joints():
     """ Get all joints in selection """
     return cmds.ls(sl=True, type="joint")
 
-def inject_shapes(influence, xform, geos, include, exclude, delete=True):
+def inject_shapes(influence, xform, geos, include, exclude, delete):
     """ Add shaped mesh to xform """
     material = create_invis_material()
     for geo in geos:
@@ -249,7 +259,7 @@ You can use this as a time saver for a quick and dirty setup.
         s.auto = cmds.checkBox(l="Automatic control shaping", ann="""
 Shape the controls based on the joints influence.
 The alternative is to manually go into each control and delete the faces you do not wish to be there.
-Untick this only when getting undesired results from auto.
+Disable this when getting undesired results from auto.
 """, v=True)
 
 
@@ -289,7 +299,7 @@ Untick this only when getting undesired results from auto.
                         base = create_base(jnt, "%s_ctrl" % jnt)
                         cmds.parent(base, container)
                         new_controls[jnt] = base
-                        inject_shapes(jnt, base, geos, inc, exc) # link up shape, autos
+                        inject_shapes(jnt, base, geos, inc, exc, auto) # link up shape, autos
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
                 bases = dict((a, create_base(a, "%s_ctrl" % a)) for a, b in info.iteritems() if b[0]) # Build out our bases
