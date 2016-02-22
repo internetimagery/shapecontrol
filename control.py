@@ -313,10 +313,6 @@ Disable this when getting undesired results from auto.
                         new_controls[jnt] = base
                         inject_shapes(jnt, base, geos, inc, exc, auto) # link up shape, autos
 
-                        if unselectable:
-                            for geo in geos:
-                                lock_mesh(cmds.listRelatives(geo, p=True)[0])
-
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
                 bases = dict((a, create_base(a, "%s_ctrl" % a)) for a, b in info.iteritems() if b[0]) # Build out our bases
@@ -330,6 +326,7 @@ Disable this when getting undesired results from auto.
                     else:
                         cmds.parent(bases[jnt], container)
                     inject_shapes(jnt, base, geos, inc, exc, auto)
+
                 print "Created controls, matching hierarchy."
             if control_type == 2: # Single control
                 base = None
@@ -356,6 +353,12 @@ Disable this when getting undesired results from auto.
                                 if geos:
                                     inject_shapes(influence, control, geos, inc, exc, auto)
                 print "Controllers Updated."
+
+            if unselectable:
+                xforms = set([cmds.listRelatives(b, p=True)[0] for a in info.values() for b in a[0] if a[0]])
+                for lock in xforms:
+                    lock_mesh(lock)
+
             if new_controls:
                 if constrain:
                     for jnt, control in new_controls.iteritems():
