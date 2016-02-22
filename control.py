@@ -45,6 +45,11 @@ def unique_name(name):
         working_name = "%s_%s" % (name, i)
     return working_name
 
+def lock_mesh(name):
+    """ Lock a mesh to be unselectable """
+    cmds.setAttr("%s.overrideEnabled" % name, 1)
+    cmds.setAttr("%s.overrideDisplayType" % name, 2)
+
 class Cache(object):
     """ Cached Functions """
     def __init__(s):
@@ -256,6 +261,12 @@ Parent constrain the controls to the joints.
 You can use this as a time saver for a quick and dirty setup.
 """)
 
+        s.unselectable = cmds.checkBox(l="Unselectable base mesh", ann="""
+Make base mesh unselectable.
+This is a nice shortcut to ensure that the mesh underlying the controls is not selected when trying to pick a controller.
+""")
+
+
         s.auto = cmds.checkBox(l="Automatic control shaping", ann="""
 Shape the controls based on the joints influence.
 The alternative is to manually go into each control and delete the faces you do not wish to be there.
@@ -276,6 +287,7 @@ Disable this when getting undesired results from auto.
             joints |= set(b for a in children for b in a)
 
         constrain = cmds.checkBox(s.constrain, q=True, v=True) # Do we constrain controllers?
+        unselectable = cmds.checkBox(s.unselectable, q=True, v=True) # Do we lock base mesh?
         auto = cmds.checkBox(s.auto, q=True, v=True) # Do we automatically delete faces?
 
         container = "controller_grp"
@@ -300,6 +312,11 @@ Disable this when getting undesired results from auto.
                         cmds.parent(base, container)
                         new_controls[jnt] = base
                         inject_shapes(jnt, base, geos, inc, exc, auto) # link up shape, autos
+
+                        if unselectable:
+                            for geo in geos:
+                                lock_mesh(cmds.listRelatives(geo, p=True)[0])
+
                 print "Created controllers."
             if control_type == 1: # Match hierarchy
                 bases = dict((a, create_base(a, "%s_ctrl" % a)) for a, b in info.iteritems() if b[0]) # Build out our bases
